@@ -5,12 +5,15 @@ import api from "../api/axios";
 const TopNav = () => {
   const navigate = useNavigate();
   const [username, setUsername] = useState("");
+  const [cashBalance, setCashBalance] = useState(0);
 
   useEffect(() => {
     const fetchUserProfile = async () => {
       try {
         const res = await api.get("/users/user_profile");
         setUsername(res.data.username);
+        const balance = res.data.balance || 0;
+        setCashBalance(balance);
       } catch (err) {
         console.error("Failed to fetch user profile", err);
       }
@@ -42,10 +45,10 @@ const TopNav = () => {
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("username");
-    navigate("/login");
+    navigate("/");
   };
 
-  const { cashBalance, profit, profitPercentage } = portfolioSummary;
+  const {profit, profitPercentage } = portfolioSummary;
 
   return (
     <nav className="topnav">
@@ -57,7 +60,6 @@ const TopNav = () => {
         <div className="nav-links">
           <button onClick={() => navigate("/dashboard")}>Dashboard</button>
           <button onClick={() => navigate("/portfolio")}>Portfolio</button>
-          <button onClick={() => navigate("/companies")}>Companies</button>
         </div>
       </div>
 
@@ -65,7 +67,10 @@ const TopNav = () => {
         {username && <span className="username">Hello, <p1 style={{"font-weight": "bold"}}>{username}</p1></span>}
 
         <span className={`profit ${profit >= 0 ? "positive" : "negative"}`}>
-          Cash: ${cashBalance.toFixed(2)} | Profit: ${profit.toFixed(2)} ({profitPercentage.toFixed(2)}%)
+          Cash: ${cashBalance    .toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+ | Profit: ${profit    .toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+ ({profitPercentage    .toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+%)
         </span>
         <button className="logout-btn" onClick={handleLogout}>Logout</button>
       </div>

@@ -95,8 +95,12 @@ const PortfolioPage = () => {
   const handleAddBalance = async (e) => {
     e.preventDefault();
     if (!addBalanceAmount) return alert("Please enter amount");
+
     try {
-      await api.post("/users/add_balance", addBalanceAmount);
+      await api.post("/users/add_balance", addBalanceAmount, {
+        headers: { "Content-Type": "application/json" }
+      });
+
       fetchUserBalance();
       setAddBalanceAmount("");
       alert("Balance added successfully!");
@@ -154,6 +158,12 @@ const PortfolioPage = () => {
             padding: "1rem",
             backgroundColor: "#f9f9f9"
           }}>
+            <h2>Total invested</h2>
+            <h3>
+              ${portfolio
+                .reduce((sum, inv) => sum + (inv.amountUsd || 0), 0)
+                .toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </h3>
             <h2 style={{ marginBottom: "1rem" }}>Holdings</h2>
             {portfolio.length === 0 ? (
               <p>No investments yet.</p>
@@ -172,10 +182,12 @@ const PortfolioPage = () => {
                     <tr key={inv.id}>
                       <td style={{ padding: "0.75rem", borderBottom: "1px solid #eee" }}>{inv.tickerSymbol}</td>
                       <td style={{ padding: "0.75rem", borderBottom: "1px solid #eee", textAlign: "right" }}>
-                        {(inv.sharesPurchased ?? 0).toFixed(2)}
+                        {(inv.sharesPurchased ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+
                       </td>
                       <td style={{ padding: "0.75rem", borderBottom: "1px solid #eee", textAlign: "right" }}>
-                        ${(inv.amountUsd ?? 0).toFixed(2)}
+                        ${(inv.amountUsd ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+
                       </td>
                       <td style={{
                         padding: "0.75rem",
@@ -184,7 +196,8 @@ const PortfolioPage = () => {
                         color: (inv.profit ?? 0) >= 0 ? "green" : "red",
                         fontWeight: "bold"
                       }}>
-                        ${(inv.profit ?? 0).toFixed(2)}
+                        ${(inv.profit ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+
                       </td>
                     </tr>
                   ))}
