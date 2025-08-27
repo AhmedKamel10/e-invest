@@ -60,6 +60,8 @@ const TopNav = () => {
         <div className="nav-links">
           <button onClick={() => navigate("/dashboard")}>Dashboard</button>
           <button onClick={() => navigate("/portfolio")}>Portfolio</button>
+          <button onClick={() => navigate("/transactions")}>Transactions</button>
+
         </div>
       </div>
 

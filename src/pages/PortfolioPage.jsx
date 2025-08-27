@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from "react";
 import api from "../api/axios";
 import TopNav from "../components/TopNav";
+import StockTicker from "../../components/common/StockTicker/StockTicker";
+import { useUser } from "../../context/UserContext";
+import "../MainPage.css";
+
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -13,6 +17,7 @@ import {
   Legend,
 } from "chart.js";
 import { Line, Pie } from "react-chartjs-2";
+import "./PortfolioPage.css";
 
 ChartJS.register(
   CategoryScale,
@@ -28,12 +33,13 @@ ChartJS.register(
 const PortfolioPage = () => {
   const [portfolio, setPortfolio] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [buyTicker, setBuyTicker] = useState("");
-  const [buyAmount, setBuyAmount] = useState("");
-  const [sellTicker, setSellTicker] = useState("");
-  const [sellShares, setSellShares] = useState("");
+  const [error, setError] = useState(null);
+  const [modal, setModal] = useState({ type: null, ticker: "", value: "" });
+  const { cashBalance: userBalance, refreshUserData } = useUser();
+  const [companies, setCompanies] = useState([]);
+  const [historyData, setHistoryData] = useState({});
   const [addBalanceAmount, setAddBalanceAmount] = useState("");
-  const [userBalance, setUserBalance] = useState(0);
+
 
   const fetchPortfolio = async () => {
     try {
@@ -42,78 +48,128 @@ const PortfolioPage = () => {
       setLoading(false);
     } catch (err) {
       console.error("Error fetching portfolio:", err);
+      setError("Failed to fetch portfolio data");
       setLoading(false);
     }
   };
 
-  const fetchUserBalance = async () => {
-    try {
-      const res = await api.get("/users/user_profile");
-      setUserBalance(res.data.balance || 0);
-    } catch (err) {
-      console.error("Error fetching user balance:", err);
-    }
-  };
+    useEffect(() => {
+    const fetchCompanies = async () => {
+      try {
+        const response = await api.get("/companies");
+        setCompanies(response.data);
 
+        const allHistory = {};
+        await Promise.all(
+          response.data.map(async (company) => {
+            const hist = await api.get(
+              `/api/stock-history/${company.tickerSymbol}`
+            );
+            allHistory[company.tickerSymbol] = hist.data;
+          })
+        );
+        setHistoryData(allHistory);
+        setLoading(false);
+      } catch (error) {
+        console.error("Error fetching companies or history:", error);
+        setLoading(false);
+      }
+    };
+
+    fetchCompanies();
+  }, []);
   useEffect(() => {
     fetchPortfolio();
-    fetchUserBalance();
+    // User balance is now managed by context, no need to fetch here
   }, []);
 
-  const handleBuy = async (e) => {
+  const openModal = (type, ticker = "") =>
+    setModal({ type, ticker, value: "" });
+  const closeModal = () => setModal({ type: null, ticker: "", value: "" });
+
+  const handleTrade = async (e) => {
     e.preventDefault();
-    if (!buyTicker || !buyAmount) return alert("Please fill both fields");
+    if (!modal.value || Number(modal.value) <= 0) {
+      alert("Please enter a valid amount/shares");
+      return;
+    }
+
     try {
-      await api.post(`/investments/invest/buy?ticker=${buyTicker}&amountUsd=${buyAmount}`);
+      let endpoint = "";
+      let params = {};
+
+      if (modal.type === "BUY") {
+        endpoint = "/investments/invest/buy";
+        params = {
+          ticker: modal.ticker,
+          amountUsd: Number(modal.value),
+        };
+      } else if (modal.type === "SELL") {
+        endpoint = "/investments/invest/sell";
+        params = {
+          ticker: modal.ticker,
+sharesToSell: parseFloat(Number(modal.value).toFixed(2))
+        };
+      }
+
+      await api.post(endpoint, null, { params });
+      alert(`${modal.type} operation successful!`);
+      closeModal();
       fetchPortfolio();
-      fetchUserBalance();
-      setBuyTicker("");
-      setBuyAmount("");
-      alert("Bought successfully!");
+      // Refresh user data in context to update TopNav
+      refreshUserData();
     } catch (err) {
       console.error(err);
-      alert("Error buying shares: " + (err.response?.data || err.message));
+      alert(
+        `${modal.type} failed: ${err.response?.data?.message || err.message}`
+      );
     }
   };
 
-  const handleSell = async (e) => {
-    e.preventDefault();
-    if (!sellTicker || !sellShares) return alert("Please fill both fields");
-    try {
-      await api.post(`/investments/invest/sell?ticker=${sellTicker}&sharesToSell=${sellShares}`);
-      fetchPortfolio();
-      fetchUserBalance();
-      setSellTicker("");
-      setSellShares("");
-      alert("Sold successfully!");
-    } catch (err) {
-      console.error(err);
-      alert("Error selling shares: " + (err.response?.data || err.message));
-    }
-  };
+const handleAddBalance = async (e) => {
+  e.preventDefault();
 
-  const handleAddBalance = async (e) => {
-    e.preventDefault();
-    if (!addBalanceAmount) return alert("Please enter amount");
+  // ask user for amount directly in a prompt
+  const amount = prompt("Enter the amount you want to add:");
+  if (!amount || isNaN(amount)) return alert("Invalid amount");
 
-    try {
-      await api.post("/users/add_balance", addBalanceAmount, {
-        headers: { "Content-Type": "application/json" }
-      });
+  try {
+    const res = await api.post("/users/add_balance", amount, {
+      headers: { "Content-Type": "application/json" }
+    });
 
-      fetchUserBalance();
-      setAddBalanceAmount("");
-      alert("Balance added successfully!");
-    } catch (err) {
-      console.error(err);
-      alert("Error adding balance: " + (err.response?.data || err.message));
-    }
-  };
+    // if backend returns new balance
+    console.log(res);
+    const newBalance = res.data;
+    refreshUserData(); // Refresh user data in context to update TopNav
+    alert(`Balance added successfully! Your new balance is ${newBalance}`);
+  } catch (err) {
+    console.error(err);
+    alert("Error adding balance: " + (err.response?.data || err.message));
+  }
+};
 
-  if (loading) return <div style={{ padding: "2rem" }}>Loading portfolio...</div>;
 
-  // Prepare chart data
-  const totalProfit = portfolio.reduce((sum, inv) => sum + (inv.profit || 0), 0);
+  // <TopNav />
+
+  if (error)
+    return (
+      <div>
+        <TopNav />
+        <div className="container">
+          <div className="error">{error}</div>
+        </div>
+      </div>
+    );
+
+  const totalInvested = portfolio.reduce(
+    (sum, inv) => sum + (inv.amountUsd || 0),
+    0
+  );
+  const totalProfit = portfolio.reduce(
+    (sum, inv) => sum + (inv.profit || 0),
+    0
+  );
 
   const lineChartData = {
     labels: portfolio.map((inv) => inv.tickerSymbol),
@@ -122,8 +178,8 @@ const PortfolioPage = () => {
         label: "Profit (USD)",
         data: portfolio.map((inv) => inv.profit ?? 0),
         fill: false,
-        borderColor: "blue",
-        tension: 0.3,
+        borderColor: "rgb(75, 192, 192)",
+        tension: 0.1,
       },
     ],
   };
@@ -134,151 +190,219 @@ const PortfolioPage = () => {
       {
         label: "Investment Distribution",
         data: portfolio.map((inv) => inv.amountUsd ?? 0),
-        backgroundColor: portfolio.map((_, idx) =>
-          ["#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0", "#9966FF", "#FF9F40"][idx % 6]
-        ),
+        backgroundColor: [
+          "#FF6384",
+          "#36A2EB",
+          "#FFCE56",
+          "#4BC0C0",
+          "#9966FF",
+          "#FF9F40",
+          "#8AC926",
+          "#1982C4",
+          "#6A4C93",
+          "#F15BB5",
+        ],
       },
     ],
   };
 
   return (
-    <div style={{ fontFamily: "Arial, sans-serif" }}>
-      <TopNav />
-      <div style={{ padding: "2rem", maxWidth: "1400px", margin: "0 auto" }}>
-        <h1 style={{ marginBottom: "1rem" }}>My Portfolio</h1>
-        <p><strong>Current Balance:</strong> ${userBalance.toFixed(2)}</p>
+    <div>
+            <div className="top-slider">
+        <div className="top-slider-track">
+          {companies.map((company) => (
+            <div
+              key={company.id}
+              className="top-slider-card"
+              onClick={() => openModal("BUY", company)}
+            >
+              <span className="ticker">{company.tickerSymbol}</span>
+              <span className="price">
+                ${company.lastStockPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
 
-        <div style={{ display: "flex", gap: "2rem", flexWrap: "wrap" }}>
-          {/* Holdings Table */}
-          <div style={{
-            flex: 1,
-            minWidth: "350px",
-            border: "1px solid #ccc",
-            borderRadius: "10px",
-            padding: "1rem",
-            backgroundColor: "#f9f9f9"
-          }}>
-            <h2>Total invested</h2>
-            <h3>
-              ${portfolio
-                .reduce((sum, inv) => sum + (inv.amountUsd || 0), 0)
-                .toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </h3>
-            <h2 style={{ marginBottom: "1rem" }}>Holdings</h2>
-            {portfolio.length === 0 ? (
-              <p>No investments yet.</p>
-            ) : (
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <TopNav />
+      <div className="container" style={{marginTop:"30px"}}>
+        <h1>My Portfolio</h1>
+
+        <div className="summary-cards">
+          <div className="card">
+            <h3>Current Balance</h3>
+            <p className="balance">
+              $
+              {userBalance.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+              <button
+                onClick={handleAddBalance}
+                style={{
+                  marginLeft: "10px",
+                  padding: "5px 10px",
+                  fontSize: "12px",
+                }}
+              >
+                Add
+              </button>
+            </p>
+          </div>
+
+          <div className="card">
+            <h3>Total Invested</h3>
+            <p>
+              $
+              {totalInvested.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </p>
+          </div>
+
+          <div className="card">
+            <h3>Total Profit/Loss</h3>
+            <p className={totalProfit >= 0 ? "positive" : "negative"}>
+              $
+              {totalProfit.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </p>
+          </div>
+        </div>
+
+        {/* Holdings Table */}
+        <div className="card">
+          <h2>Your Holdings</h2>
+          {portfolio.length === 0 ? (
+            <p>No investments yet.</p>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table>
                 <thead>
                   <tr>
-                    <th style={{ borderBottom: "1px solid #ccc", padding: "0.5rem", textAlign: "left" }}>Ticker</th>
-                    <th style={{ borderBottom: "1px solid #ccc", padding: "0.5rem", textAlign: "right" }}>Shares</th>
-                    <th style={{ borderBottom: "1px solid #ccc", padding: "0.5rem", textAlign: "right" }}>Amount USD</th>
-                    <th style={{ borderBottom: "1px solid #ccc", padding: "0.5rem", textAlign: "right" }}>Profit</th>
+                    <th>Ticker</th>
+                    <th>Shares</th>
+                    <th>Amount USD</th>
+                    <th>Profit</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {portfolio.map((inv) => (
                     <tr key={inv.id}>
-                      <td style={{ padding: "0.75rem", borderBottom: "1px solid #eee" }}>{inv.tickerSymbol}</td>
-                      <td style={{ padding: "0.75rem", borderBottom: "1px solid #eee", textAlign: "right" }}>
-                        {(inv.sharesPurchased ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-
+                      <td>{inv.tickerSymbol}</td>
+                      <td>
+                        {(inv.sharesPurchased ?? 0).toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
                       </td>
-                      <td style={{ padding: "0.75rem", borderBottom: "1px solid #eee", textAlign: "right" }}>
-                        ${(inv.amountUsd ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-
+                      <td>
+                        $
+                        {(inv.amountUsd ?? 0).toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
                       </td>
-                      <td style={{
-                        padding: "0.75rem",
-                        borderBottom: "1px solid #eee",
-                        textAlign: "right",
-                        color: (inv.profit ?? 0) >= 0 ? "green" : "red",
-                        fontWeight: "bold"
-                      }}>
-                        ${(inv.profit ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-
+                      <td
+                        className={
+                          (inv.profit ?? 0) >= 0 ? "positive" : "negative"
+                        }
+                      >
+                        $
+                        {(inv.profit ?? 0).toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </td>
+                      <td>
+                        <button
+                          onClick={() => openModal("BUY", inv.tickerSymbol)}
+                          style={{
+                            marginRight: "5px",
+                            padding: "5px 10px",
+                            fontSize: "12px",
+                            backgroundColor:"#4caf50"
+                          }}
+                        >
+                          Buy 
+                        </button>
+                        <button
+                          onClick={() => openModal("SELL", inv.tickerSymbol)}
+                          style={{
+                            padding: "5px 10px",
+                            fontSize: "12px",
+                            background: "#dc2626",
+                          }}
+                        >
+                          Sell
+                        </button>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            )}
-          </div>
-
-          {/* Buy/Sell Forms */}
-          <div style={{
-            flex: 1,
-            minWidth: "350px",
-            border: "1px solid #ccc",
-            borderRadius: "10px",
-            padding: "1rem",
-            backgroundColor: "#f9f9f9"
-          }}>
-            <h2>Add Balance</h2>
-            <form onSubmit={handleAddBalance} style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "1rem" }}>
-              <input
-                type="number"
-                placeholder="Amount USD"
-                value={addBalanceAmount}
-                onChange={(e) => setAddBalanceAmount(e.target.value)}
-              />
-              <button type="submit" style={{ padding: "0.5rem", backgroundColor: "#2196F3", color: "white", border: "none", borderRadius: "5px" }}>
-                Add Balance
-              </button>
-            </form>
-
-            <h2>Quick Buy</h2>
-            <form onSubmit={handleBuy} style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-              <input type="text" placeholder="Ticker" value={buyTicker} onChange={(e) => setBuyTicker(e.target.value)} />
-              <input type="number" placeholder="Amount USD" value={buyAmount} onChange={(e) => setBuyAmount(e.target.value)} />
-              <button type="submit" style={{ padding: "0.5rem", backgroundColor: "#4CAF50", color: "white", border: "none", borderRadius: "5px" }}>
-                Buy
-              </button>
-            </form>
-
-            <h2 style={{ marginTop: "1rem" }}>Quick Sell</h2>
-            <form onSubmit={handleSell} style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-              <input type="text" placeholder="Ticker" value={sellTicker} onChange={(e) => setSellTicker(e.target.value)} />
-              <input type="number" placeholder="Shares to Sell" value={sellShares} onChange={(e) => setSellShares(e.target.value)} />
-              <button type="submit" style={{ padding: "0.5rem", backgroundColor: "#f44336", color: "white", border: "none", borderRadius: "5px" }}>
-                Sell
-              </button>
-            </form>
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Charts */}
-        <div style={{ display: "flex", gap: "2rem", flexWrap: "wrap", marginTop: "2rem" }}>
-          <div style={{
-            flex: 1,
-            minWidth: "350px",
-            border: "1px solid #ccc",
-            borderRadius: "10px",
-            padding: "1rem",
-            backgroundColor: "#f9f9f9"
-          }}>
-            <h2>Total Profit</h2>
-            <Line data={lineChartData} options={{ responsive: true, plugins: { legend: { display: true } } }} />
-            <p style={{ marginTop: "1rem", fontWeight: "bold" }}>Total Profit: <span style={{ color: totalProfit >= 0 ? "green" : "red" }}>${totalProfit.toFixed(2)}</span></p>
-          </div>
+        {portfolio.length > 0 && (
+          <div
+            style={{
+              display: "flex",
+              gap: "20px",
+              flexWrap: "wrap",
+              marginTop: "20px",
+            }}
+          >
+            <div className="card" style={{ flex: "1", minWidth: "300px" }}>
+              <h2>Profit by Stock</h2>
+              <Line data={lineChartData} options={{ responsive: true }} />
+            </div>
 
-          <div style={{
-            flex: 1,
-            minWidth: "350px",
-            border: "1px solid #ccc",
-            borderRadius: "10px",
-            padding: "1rem",
-            backgroundColor: "#f9f9f9"
-          }}>
-            <h2>Portfolio Distribution</h2>
-            {portfolio.length > 0 ? (
-              <Pie data={pieChartData} options={{ responsive: true, plugins: { legend: { position: "right" } } }} />
-            ) : (
-              <p>No investments to display.</p>
-            )}
+            <div className="card" style={{ flex: "1", minWidth: "300px" }}>
+              <h2>Portfolio Distribution</h2>
+              <Pie data={pieChartData} options={{ responsive: true }} />
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* Trade Modal */}
+        {modal.type && (
+          <div className="modal-backdrop" onClick={closeModal}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <h2>
+                {modal.type} {modal.ticker}
+              </h2>
+              <form onSubmit={handleTrade}>
+                <label>
+                  {modal.type === "BUY" ? "Amount (USD):" : "Shares to Sell:"}
+                </label>
+<input
+  type="text"
+  value={modal.value}
+  onChange={(e) => setModal({ ...modal, value: e.target.value })}
+  required
+  autoFocus
+/>
+
+                <div className="modal-buttons">
+                  <button type="submit" className="buy-btn">
+                    {modal.type}
+                  </button>
+                  <button type="button" onClick={closeModal}>
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

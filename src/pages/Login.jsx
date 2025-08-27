@@ -20,6 +20,16 @@ export default function Login() {
 
   return (
     <div className="login-page">
+            <div className="login-card">
+        <div className="login-header">
+          <img
+            src="https://www.efinance.com.eg/wp-content/uploads/2022/06/e-finance-logo-2.jpg"
+            alt="e-finance Logo"
+            className="login-logo"
+          />
+          <h1 className="login-title">Welcome to e-invest</h1>
+          <p className="login-subtitle">Sign in to your account</p>
+        </div>
       <div className="login-card">
         <h1 className="login-title">Login</h1>
         <form onSubmit={handleSubmit} className="login-form">
@@ -38,6 +48,7 @@ export default function Login() {
           <button type="submit">Login</button>
         </form>
       </div>
+    </div>
     </div>
   );
 }
