@@ -46,6 +46,7 @@ export default function Login() {
             onChange={(e) => setForm({ ...form, password: e.target.value })}
           />
           <button type="submit">Login</button>
+          <a href="/register" className="register-link">Don't have an account? Sign up</a>
         </form>
       </div>
     </div>

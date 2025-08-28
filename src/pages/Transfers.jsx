@@ -105,7 +105,7 @@ export default function Transfers() {
       <div className="container transfers-container" style={{marginTop:"20px"}}>
         {/* Header */}
         <div className="page-header">
-          <h1 className="page-title">💸 Money Transfers</h1>
+          <h1 className="page-title">Money Transfers</h1>
           <p className="page-subtitle">Send money to other users instantly</p>
         </div>
 
@@ -221,8 +221,7 @@ export default function Transfers() {
                 </>
               ) : (
                 <>
-                  <span className="btn-icon">💸</span>
-                  Send Money
+                    Send Money
                 </>
               )}
             </button>

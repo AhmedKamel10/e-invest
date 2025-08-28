@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import api from "../api/axios";
 import "../MainPage.css";
 import { Line } from "react-chartjs-2";
+import Footer from "../assets/footer";
 import {
   Chart as ChartJS,
   CategoryScale,
